@@ -657,7 +657,6 @@ Qed.
 (*     Operational preposets                                                  *)
 (* ************************************************************************** *)
 
-(* TODO: do we need acyclic precondition? *)
 Lemma operationalP p : 
   reflect (subrel (fs_ca p) (<=^i%O)) (operational p).
 Proof.
@@ -805,15 +804,15 @@ Section BuildCov.
 Context (E : identType) (L : botType).
 Context (fE : {fset E}).
 Implicit Types (p : lfspreposet E L).
-Implicit Types (lab : fE -> L) (ica : rel fE) (ca : rel E).
+Implicit Types (lab : E -> L) (ica : rel fE) (ca : rel E).
 
 Definition build_cov lab ca : lfspreposet E L := 
   let sca : rel E := (fun x y => (y != x) && (ca x y)) in
   let ica : rel fE := cov (relpre val sca) in
-  build lab ica.
+  build (lab \o val) ica.
 
-Variables  (lab : fE -> L) (ca : rel E).
-Hypothesis (labD : forall e, lab e != bot).
+Variables  (lab : E -> L) (ca : rel E).
+Hypothesis (labD : forall (e : fE), lab (val e) != bot).
 Hypothesis (ca_refl  : reflexive ca).
 Hypothesis (ca_anti  : antisymmetric ca).
 Hypothesis (ca_trans : transitive ca).
@@ -825,11 +824,11 @@ Lemma build_cov_fin_ica :
   fin_ica (build_cov lab ca) =2 cov (relpre val (iker ca)).
 Proof.
   case=> ? /[dup] + in1 [? /[dup] + in2]. 
-  rewrite {1 2}build_eventset => * //.
+  rewrite {1 2}build_eventset => * //; last exact/labD.
   rewrite /fin_ica /sub_rel_down /=.
   rewrite build_ica /sub_rel_lift /=.
   do ? case: insubP=> [??? |/negP//].
-  move: in1 in2; case: _ / (esym (@build_eventset E L fE lab ica labD))=> *.
+  move: in1 in2; case: _ / (esym (build_eventset ica labD))=> *.
   apply/congr2/val_inj=> //; exact/val_inj.
 Qed.
 
@@ -1027,7 +1026,7 @@ Implicit Types (ls : seq L).
 
 Definition of_seq ls := 
   let fE  := [fset e | e in nfresh \i0 (size ls)] in 
-  let lab := fun e : fE => (nth bot ls (encode (val e))) in
+  let lab := fun e : E => (nth bot ls (encode e)) in
   let ca  := fun e1 e2 : E => e1 <=^i e2 in
   @build_cov E L fE lab ca.
 
@@ -1187,7 +1186,7 @@ Implicit Types (p : lfspreposet E L).
  *            
  *)
 Definition inter_rel r p := 
-  @build_cov E L _ (fin_lab p) (r ⊓ (fs_ca p)).
+  @build_cov E L (lfsp_eventset p) (fs_lab p) (r ⊓ (fs_ca p)).
 
 (* Lemma inter_rel_finsupp r p :  *)
 (*   lfsp_eventset (inter_rel r p) = lfsp_eventset p. *)
@@ -1255,9 +1254,8 @@ Implicit Types (p : lfspreposet E L).
 Definition restrict P p : lfspreposet E L :=
   (* TODO: there should be a simpler solution... *)
   let fE  := [fset e in lfsp_eventset p | P e] in
-  let lab := (fun e : fE => fs_lab p (val e)) in
   let ca  := (eq_op ⊔ (P × P)) ⊓ (fs_ca p) in
-  @build_cov E L _ lab ca.
+  @build_cov E L fE (fs_lab p) ca.
 
 Variables (P : pred E) (p : lfspreposet E L).
 Hypothesis (supcl : supp_closed p).
@@ -1476,14 +1474,14 @@ Context (fE : {fset E}).
 Implicit Types (p : lfsposet E L).
 Implicit Types (lab : fE -> L) (ica : rel fE) (ca : rel E).
 
-Variables (lab : fE -> L) (ca : rel E).
-Hypothesis labD : forall e, lab e != bot.
+Variables (lab : E -> L) (ca : rel E).
+Hypothesis labD : forall (e : fE), lab (val e) != bot.
 Hypothesis ca_refl  : reflexive ca.
 Hypothesis ca_anti  : antisymmetric ca.
 Hypothesis ca_trans : transitive ca.
 
 Lemma build_covP : 
-  let p := lFsPrePoset.build_cov lab ca in
+  let p := lFsPrePoset.build_cov fE lab ca in
   supp_closed p && acyclic (fin_ica p).
 Proof.
   apply/andP; split=> //; last first.
@@ -2626,7 +2624,7 @@ Lemma bhom_factor p q : bhom_le p q ->
 Proof.
   case/bhom_leP=> f [labf homf [/= g K K']]. 
   set fE := lfsp_eventset p.
-  set fl : fE -> L := fun e => lab (g (val e) : [Event of q]).
+  set fl : E1 -> L := fun e => lab (g e : [Event of q]).
   set ca  : rel E1  := fun e1 e2 => 
     (e1 == e2) || 
     [&& fs_ca q (g e1) (g e2), e1 \in lfsp_eventset p & e2 \in lfsp_eventset p].
@@ -2665,7 +2663,7 @@ Proof.
   - by exists g; rewrite lFsPrePoset.build_eventset.
   - move=> e; rewrite ?fs_labE lFsPrePoset.build_lab /sub_lift.
     case: insubP=> /= [[/=>?]|].
-    + rewrite /fl -labf fs_labE /= K' // =>-> //.
+    + by rewrite /fl -labf fs_labE /= K' // => _ -> //.
     by rewrite -fs_labNbot negbK=>/eqP->.
   move=>>; rewrite ?/(_ <= _) /= lFsPrePoset.build_cov_ca // /ca /fE.
   rewrite lFsPrePoset.build_eventset // => ??.
